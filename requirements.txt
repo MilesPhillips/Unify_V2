@@ -1,0 +1,19 @@
+Flask==2.3.3
+Flask-Bcrypt==1.0.1
+Werkzeug==2.3.7
+psycopg2-binary
+python-dotenv
+
+# LLM / ML (install separately if not needed for API-only work)
+torch
+transformers
+datasets
+openai-whisper
+SpeechRecognition
+numpy
+sounddevice
+scipy
+python-docx
+
+# Anthropic Claude (alternative LLM)
+anthropic
