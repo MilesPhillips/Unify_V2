@@ -12,24 +12,37 @@ Flask REST API backend + React (Vite + TypeScript) frontend.
 
 - Python 3.11+
 - Node.js 18+
-- Docker (for PostgreSQL)
+- Docker (optional, only for PostgreSQL)
 
 ### First-time setup
 
 ```bash
 # 1. Copy environment variables
 cp .env.example .env
-# Edit .env with your actual values
+# For a local toy DB, leave the PostgreSQL variables unset.
+# The app will use ./unify_dev.db automatically.
 
-# 2. Start PostgreSQL
-docker-compose up -d
-
-# 3. Create database tables
+# 2. Install backend dependencies and create database tables
 pip install -r requirements.txt
 python create_db_tables.py
 
-# 4. Install frontend dependencies
+# 3. Install frontend dependencies
 cd frontend && npm install && cd ..
+```
+
+If you want PostgreSQL instead of the local SQLite file, set `DATABASE_URL` or
+the `DB_*` variables in `.env`, then run:
+
+```bash
+docker-compose up -d
+python create_db_tables.py
+```
+
+To enable real chat responses, set an Anthropic key in `.env`:
+
+```bash
+ANTHROPIC_API_KEY=your_key_here
+ANTHROPIC_MODEL=claude-3-5-haiku-20241022
 ```
 
 ### Running in development
