@@ -23,6 +23,8 @@ cp .env.example .env
 # The app will use ./unify_dev.db automatically.
 
 # 2. Install backend dependencies and create database tables
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python create_db_tables.py
 
@@ -44,6 +46,40 @@ To enable real chat responses, set an Anthropic key in `.env`:
 ANTHROPIC_API_KEY=your_key_here
 ANTHROPIC_MODEL=claude-3-5-haiku-20241022
 ```
+
+## Launching the App
+
+### Local SQLite mode
+
+```bash
+cd /path/to/Unify_V2
+source .venv/bin/activate
+python create_db_tables.py
+flask --app app run
+```
+
+In a second terminal:
+
+```bash
+cd /path/to/Unify_V2/frontend
+npm run dev
+```
+
+Then open `http://localhost:5173`.
+
+### Local SQLite mode with live LLM responses
+
+1. Add `ANTHROPIC_API_KEY` to `.env`.
+2. Install the SDK in the project virtualenv:
+
+```bash
+cd /path/to/Unify_V2
+source .venv/bin/activate
+pip install anthropic
+flask --app app run
+```
+
+Keep the frontend dev server running with `npm run dev` in `frontend/`.
 
 ### Running in development
 
