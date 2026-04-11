@@ -14,10 +14,11 @@ import sqlite3
 try:
     from dotenv import load_dotenv
 except ModuleNotFoundError:
-    def load_dotenv():
+    def load_dotenv(*args, **kwargs):
         return False
 
-load_dotenv()
+ENV_PATH = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=ENV_PATH)
 
 DEFAULT_SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'unify_dev.db')
 
