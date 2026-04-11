@@ -6,103 +6,88 @@ Flask REST API backend + React (Vite + TypeScript) frontend.
 
 ---
 
-## Development setup
+## Quick start
 
-### Prerequisites
+```bash
+# 1. Clone and enter the repo
+git clone <repo-url> && cd Unify_V2
+
+# 2. Run the launch script
+./launch.sh
+```
+
+The script handles everything:
+- Creates a Python virtual environment
+- Installs core backend dependencies (`requirements-core.txt`)
+- Copies `.env.example` → `.env` on first run (you'll be prompted to edit it)
+- Prompts you to choose SQLite (zero config) or PostgreSQL (via Docker)
+- Initialises database tables
+- Starts Flask on `:5000` and Vite on `:5173`
+
+Open `http://localhost:5173` in your browser. Press **Ctrl+C** to stop both servers.
+
+---
+
+## Prerequisites
 
 - Python 3.11+
 - Node.js 18+
-- Docker (optional, only for PostgreSQL)
+- Docker (only required for the PostgreSQL option)
 
-### First-time setup
+---
+
+## Environment variables
+
+Copy `.env.example` to `.env` before first run (the script does this automatically, then stops so you can edit it).
+
+Key variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SECRET_KEY` | `change-me-in-production` | Flask session signing key |
+| `SQLITE_PATH` | `unify_dev.db` | SQLite file location |
+| `DB_NAME` | — | PostgreSQL database name |
+| `DB_USER` | — | PostgreSQL username |
+| `DB_PASS` | — | PostgreSQL password (also used by docker-compose) |
+| `DB_HOST` | `localhost` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DATABASE_URL` | — | Full Postgres URL (overrides DB_* vars) |
+| `ANTHROPIC_API_KEY` | — | Required for live AI chat responses |
+| `ANTHROPIC_MODEL` | `claude-3-5-haiku-20241022` | Model to use |
+
+---
+
+## PostgreSQL support
+
+If you choose PostgreSQL at launch, `launch.sh` will:
+1. Install `psycopg2-binary` (requires `libpq-dev`: `sudo apt install libpq-dev`)
+2. Start a Postgres container via `docker compose up -d postgres`
+3. Wait for it to be healthy, then create the schema
+
+Make sure `DB_PASS` is set in `.env` before choosing this option.
+
+---
+
+## ML / audio features
+
+The heavy ML packages (torch, whisper, etc.) are in `requirements-ml.txt` and are **not** installed by the launch script. Install them separately only if you need speech/transcription features:
 
 ```bash
-# 1. Copy environment variables
-cp .env.example .env
-# For a local toy DB, leave the PostgreSQL variables unset.
-# The app will use ./unify_dev.db automatically.
-
-# 2. Install backend dependencies and create database tables
-python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-python create_db_tables.py
-
-# 3. Install frontend dependencies
-cd frontend && npm install && cd ..
+pip install -r requirements-ml.txt
 ```
 
-If you want PostgreSQL instead of the local SQLite file, set `DATABASE_URL` or
-the `DB_*` variables in `.env`, then run:
+---
 
-```bash
-docker-compose up -d
-python create_db_tables.py
-```
-
-To enable real chat responses, set an Anthropic key in `.env`:
-
-```bash
-ANTHROPIC_API_KEY=your_key_here
-ANTHROPIC_MODEL=claude-3-5-haiku-20241022
-```
-
-## Launching the App
-
-### Local SQLite mode
-
-```bash
-cd /path/to/Unify_V2
-source .venv/bin/activate
-python create_db_tables.py
-flask --app app run
-```
-
-In a second terminal:
-
-```bash
-cd /path/to/Unify_V2/frontend
-npm run dev
-```
-
-Then open `http://localhost:5173`.
-
-### Local SQLite mode with live LLM responses
-
-1. Add `ANTHROPIC_API_KEY` to `.env`.
-2. Install the SDK in the project virtualenv:
-
-```bash
-cd /path/to/Unify_V2
-source .venv/bin/activate
-pip install anthropic
-flask --app app run
-```
-
-Keep the frontend dev server running with `npm run dev` in `frontend/`.
-
-### Running in development
-
-Two processes run side by side:
-
-```bash
-# Terminal 1 — Flask API on :5000
-flask run
-
-# Terminal 2 — React dev server on :5173 (proxies /api/* to Flask)
-cd frontend && npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
-
-### Production build
+## Production build
 
 ```bash
 cd frontend && npm run build
 # Outputs to frontend/dist/
 
-flask run
-# Flask now serves both the API and the React app at :5000
+source .venv/bin/activate
+FLASK_APP=app.py flask run
+# Flask now serves both the API and the built React app at :5000
 ```
 
 ---
@@ -111,33 +96,24 @@ flask run
 
 ```
 Unify_V2/
+├── launch.sh               # Single launch script — start here
 ├── app.py                  # Flask API (all routes under /api/*)
-├── create_db_tables.py     # One-shot DB schema init
-├── requirements.txt        # Python dependencies
-├── docker-compose.yml      # PostgreSQL
+├── create_db_tables.py     # DB schema init (called by launch.sh)
+├── requirements-core.txt   # Core Python deps (fast install, SQLite-ready)
+├── requirements-postgres.txt  # PostgreSQL driver (install only for Postgres)
+├── requirements-ml.txt     # ML/audio deps (install separately if needed)
+├── requirements.txt        # References requirements-core.txt
+├── docker-compose.yml      # PostgreSQL (optional)
 ├── .env.example            # Environment variable template
-├── lib/                    # Python modules (DB, LLM, audio, etc.)
+├── lib/                    # Python modules (LLM service, etc.)
 └── frontend/               # React app (Vite + TypeScript)
     ├── package.json
-    ├── vite.config.ts
+    ├── vite.config.ts      # Dev proxy: /api/* → localhost:5000
     └── src/
         ├── App.tsx
-        ├── index.css
         ├── lib/api.ts
         ├── contexts/AuthContext.tsx
         ├── hooks/useSpeechRecognition.ts
         ├── components/
-        │   ├── Navbar.tsx
-        │   └── ProtectedRoute.tsx
         └── pages/
-            ├── Login.tsx
-            ├── Register.tsx
-            ├── Chat.tsx
-            ├── Profile.tsx
-            ├── AICoach.tsx
-            ├── Contacts.tsx
-            ├── History.tsx
-            └── Video.tsx
 ```
-
-See `Instructions_README.md` for the full phased migration plan.
