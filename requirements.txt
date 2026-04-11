@@ -1,19 +1,5 @@
-Flask==2.3.3
-Flask-Bcrypt==1.0.1
-Werkzeug==2.3.7
-psycopg2-binary
-python-dotenv
+# Core API dependencies (fast install)
+-r requirements-core.txt
 
-# LLM / ML (install separately if not needed for API-only work)
-torch
-transformers
-datasets
-openai-whisper
-SpeechRecognition
-numpy
-sounddevice
-scipy
-python-docx
-
-# Anthropic Claude (alternative LLM)
-anthropic
+# ML/audio dependencies — install separately only if needed:
+#   pip install -r requirements-ml.txt

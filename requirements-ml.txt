@@ -1,0 +1,10 @@
+# Heavy ML/audio packages — only needed for speech/transcription features
+torch
+transformers
+datasets
+openai-whisper
+SpeechRecognition
+numpy
+sounddevice
+scipy
+python-docx
