@@ -26,6 +26,14 @@ The script handles everything:
 
 Open `http://localhost:5173` in your browser. Press **Ctrl+C** to stop both servers.
 
+Alternatively, use `./tmux.sh` to launch inside a tmux session — the app runs in the bottom pane and the top pane is free for other work:
+
+```bash
+./tmux.sh
+```
+
+If a `unify` tmux session is already running, this attaches to it instead of starting a new one.
+
 ---
 
 ## Prerequisites
@@ -97,6 +105,7 @@ FLASK_APP=app.py flask run
 ```
 Unify_V2/
 ├── launch.sh               # Single launch script — start here
+├── tmux.sh                 # Tmux split-pane launcher (optional, requires tmux)
 ├── app.py                  # Flask API (all routes under /api/*)
 ├── create_db_tables.py     # DB schema init (called by launch.sh)
 ├── requirements-core.txt   # Core Python deps (fast install, SQLite-ready)
