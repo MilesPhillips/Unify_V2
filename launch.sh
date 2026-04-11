@@ -82,6 +82,9 @@ if [[ "$DB_CHOICE" == "2" ]]; then
         exit 1
     fi
 
+    info "Installing PostgreSQL driver ..."
+    pip install -q -r "$REPO_ROOT/requirements-postgres.txt"
+
     info "Starting PostgreSQL via Docker Compose ..."
     docker compose up -d postgres
 
