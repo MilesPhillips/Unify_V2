@@ -14,12 +14,11 @@ Production:
 """
 
 import os
-import sqlite3
 from functools import wraps
 
-from flask import Flask, jsonify, request, session, send_from_directory
+import psycopg2
+from flask import Flask, jsonify, request, session, send_from_directory, g
 from flask_bcrypt import Bcrypt
-from flask import g
 from lib.llm_service import LLMConfigurationError, LLMService
 
 try:
@@ -40,32 +39,7 @@ bcrypt = Bcrypt(app)
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 
-DEFAULT_SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'unify_dev.db')
-
-SQLITE_DDL = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS conversations (
-    conversation_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user1_id INTEGER REFERENCES users(user_id),
-    user2_id INTEGER REFERENCES users(user_id),
-    started_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    conversation_id INTEGER REFERENCES conversations(conversation_id),
-    sender_id INTEGER REFERENCES users(user_id),
-    content TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-"""
-
-POSTGRES_DDL = """
+DDL = """
 CREATE TABLE IF NOT EXISTS users (
     user_id  SERIAL PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
@@ -89,60 +63,29 @@ CREATE TABLE IF NOT EXISTS messages (
 """
 
 
-def get_database_config():
-    sqlite_path = os.environ.get('SQLITE_PATH', DEFAULT_SQLITE_PATH)
+def _pg_url() -> str:
     url = os.environ.get('DATABASE_URL')
     if url:
-        if url.startswith('sqlite:///'):
-            return {'driver': 'sqlite', 'path': url.removeprefix('sqlite:///')}
-        return {'driver': 'postgres', 'url': url}
-
-    db_name = os.environ.get('DB_NAME')
-    db_user = os.environ.get('DB_USER')
-    db_pass = os.environ.get('DB_PASS')
+        return url
+    db_name = os.environ.get('DB_NAME', '')
+    db_user = os.environ.get('DB_USER', 'postgres')
+    db_pass = os.environ.get('DB_PASS', '')
     db_host = os.environ.get('DB_HOST', 'localhost')
     db_port = os.environ.get('DB_PORT', '5432')
+    if not db_pass:
+        raise RuntimeError('DB_PASS is not set. Cannot connect to PostgreSQL.')
+    return f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
 
-    if not all([db_name, db_user, db_pass]):
-        return {'driver': 'sqlite', 'path': sqlite_path}
-
-    return {
-        'driver': 'postgres',
-        'url': f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}',
-    }
-
-
-def initialize_sqlite(conn):
-    conn.executescript(SQLITE_DDL)
-    conn.commit()
-
-
-def initialize_postgres(conn):
-    cur = conn.cursor()
-    cur.execute(POSTGRES_DDL)
-    conn.commit()
-    cur.close()
 
 def get_db():
     if 'db' not in g:
-        config = get_database_config()
-        g.db_driver = config['driver']
-        if config['driver'] == 'sqlite':
-            conn = sqlite3.connect(config['path'])
-            conn.row_factory = sqlite3.Row
-            initialize_sqlite(conn)
-            g.db = conn
-        else:
-            import psycopg2
-
-            conn = psycopg2.connect(config['url'])
-            initialize_postgres(conn)
-            g.db = conn
+        conn = psycopg2.connect(_pg_url())
+        cur = conn.cursor()
+        cur.execute(DDL)
+        conn.commit()
+        cur.close()
+        g.db = conn
     return g.db
-
-
-def query_param():
-    return '?' if g.get('db_driver') == 'sqlite' else '%s'
 
 
 def fetchone_value(cur):
@@ -153,41 +96,30 @@ def fetchone_value(cur):
 def get_or_create_conversation(user_id: int) -> int:
     db = get_db()
     cur = db.cursor()
-    placeholder = query_param()
     cur.execute(
-        f'''
+        '''
         SELECT conversation_id
         FROM conversations
-        WHERE user1_id = {placeholder} AND user2_id = {placeholder}
+        WHERE user1_id = %s AND user2_id = %s
         ORDER BY conversation_id ASC
         LIMIT 1
         ''',
         (user_id, user_id),
     )
-    conversation_id = fetchone_value(cur)
+    row = cur.fetchone()
+    conversation_id = row[0] if row else None
 
     if conversation_id is None:
         cur.execute(
-            f'''
+            '''
             INSERT INTO conversations (user1_id, user2_id)
-            VALUES ({placeholder}, {placeholder})
+            VALUES (%s, %s)
+            RETURNING conversation_id
             ''',
             (user_id, user_id),
         )
+        conversation_id = cur.fetchone()[0]
         db.commit()
-        conversation_id = cur.lastrowid if g.get('db_driver') == 'sqlite' else None
-        if conversation_id is None:
-            cur.execute(
-                f'''
-                SELECT conversation_id
-                FROM conversations
-                WHERE user1_id = {placeholder} AND user2_id = {placeholder}
-                ORDER BY conversation_id DESC
-                LIMIT 1
-                ''',
-                (user_id, user_id),
-            )
-            conversation_id = fetchone_value(cur)
 
     cur.close()
 
@@ -200,16 +132,15 @@ def get_or_create_conversation(user_id: int) -> int:
 def load_recent_messages(conversation_id: int, limit: int = 12) -> list[dict[str, str]]:
     db = get_db()
     cur = db.cursor()
-    placeholder = query_param()
     cur.execute(
-        f'''
+        '''
         SELECT sender_id, content
         FROM messages
-        WHERE conversation_id = {placeholder}
+        WHERE conversation_id = %s
         ORDER BY message_id DESC
-        LIMIT {limit}
+        LIMIT %s
         ''',
-        (conversation_id,),
+        (conversation_id, limit),
     )
     rows = cur.fetchall()
     cur.close()
@@ -226,16 +157,16 @@ def load_recent_messages(conversation_id: int, limit: int = 12) -> list[dict[str
 def save_message(conversation_id: int, sender_id: int | None, content: str) -> None:
     db = get_db()
     cur = db.cursor()
-    placeholder = query_param()
     cur.execute(
-        f'''
+        '''
         INSERT INTO messages (conversation_id, sender_id, content)
-        VALUES ({placeholder}, {placeholder}, {placeholder})
+        VALUES (%s, %s, %s)
         ''',
         (conversation_id, sender_id, content),
     )
     db.commit()
     cur.close()
+
 
 @app.teardown_appcontext
 def close_db(exc):
@@ -267,27 +198,19 @@ def register():
 
     db = get_db()
     cur = db.cursor()
-    placeholder = query_param()
 
-    cur.execute(f'SELECT user_id FROM users WHERE username = {placeholder}', (username,))
+    cur.execute('SELECT user_id FROM users WHERE username = %s', (username,))
     if cur.fetchone():
         cur.close()
         return jsonify({'error': 'Username already taken'}), 409
 
     hashed = bcrypt.generate_password_hash(password).decode('utf-8')
     cur.execute(
-        f'INSERT INTO users (username, password) VALUES ({placeholder}, {placeholder})',
+        'INSERT INTO users (username, password) VALUES (%s, %s) RETURNING user_id',
         (username, hashed),
     )
+    user_id = cur.fetchone()[0]
     db.commit()
-    user_id = cur.lastrowid if g.get('db_driver') == 'sqlite' else None
-    if user_id is None:
-        cur.execute(
-            f'SELECT user_id FROM users WHERE username = {placeholder}',
-            (username,),
-        )
-        row = cur.fetchone()
-        user_id = row[0] if row else None
     cur.close()
 
     return jsonify({'user_id': user_id, 'username': username}), 201
@@ -304,9 +227,8 @@ def login():
 
     db = get_db()
     cur = db.cursor()
-    placeholder = query_param()
     cur.execute(
-        f'SELECT user_id, password FROM users WHERE username = {placeholder}',
+        'SELECT user_id, password FROM users WHERE username = %s',
         (username,),
     )
     row = cur.fetchone()
