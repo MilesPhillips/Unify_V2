@@ -55,8 +55,8 @@ pip install -q -r "$REPO_ROOT/requirements-core.txt"
 if [[ ! -f "$REPO_ROOT/.env" ]]; then
     warn ".env not found — copying from .env.example"
     cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-    warn "Edit .env with your settings, then re-run this script."
-    warn "At minimum set SECRET_KEY to a random string."
+    warn "Edit .env with your credentials (SECRET_KEY, DB_PASS if using Postgres), then re-run."
+    exit 1
 fi
 
 # Load .env into the current shell so docker-compose picks up credentials
@@ -76,6 +76,10 @@ DB_CHOICE="${DB_CHOICE:-1}"
 
 if [[ "$DB_CHOICE" == "2" ]]; then
     require_cmd docker "Install Docker from https://docs.docker.com/get-docker/"
+    docker compose version &>/dev/null || {
+        error "Docker Compose v2 not found. Install Docker Desktop or the 'docker-compose-plugin' package."
+        exit 1
+    }
 
     if [[ -z "${DB_PASS:-}" ]]; then
         error "DB_PASS is not set in .env. Please set it before using PostgreSQL."
@@ -129,10 +133,16 @@ cleanup() {
     wait "$FLASK_PID" 2>/dev/null || true
     info "Flask stopped."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'trap - INT; kill -INT $$' INT
+trap 'trap - TERM; kill -TERM $$' TERM
 
 # Give Flask a moment to start before Vite sends proxy requests
 sleep 1
+if ! kill -0 "$FLASK_PID" 2>/dev/null; then
+    error "Flask failed to start. Check the output above."
+    exit 1
+fi
 
 # ─── Start Vite (foreground) ──────────────────────────────────────────────────
 info "Starting React frontend on http://localhost:5173 ..."
