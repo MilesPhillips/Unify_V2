@@ -12,15 +12,18 @@ Flask REST API backend + React (Vite + TypeScript) frontend.
 # 1. Clone and enter the repo
 git clone <repo-url> && cd Unify_V2
 
-# 2. Run the launch script
+# 2. Copy .env and set your database password
+cp .env.example .env
+# Edit .env — set DB_PASS (and optionally DB_NAME, DB_USER)
+
+# 3. Run the launch script
 ./launch.sh
 ```
 
 The script handles everything:
 - Creates a Python virtual environment
-- Installs core backend dependencies (`requirements-core.txt`)
-- Copies `.env.example` → `.env` on first run (you'll be prompted to edit it)
-- Prompts you to choose SQLite (zero config) or PostgreSQL (via Docker)
+- Installs Python dependencies (including the PostgreSQL driver)
+- Starts PostgreSQL via Docker Compose and waits for it to be healthy
 - Initialises database tables
 - Starts Flask on `:5000` and Vite on `:5173`
 
@@ -40,39 +43,27 @@ If a `unify` tmux session is already running, this attaches to it instead of sta
 
 - Python 3.11+
 - Node.js 18+
-- Docker (only required for the PostgreSQL option)
+- Docker (required — PostgreSQL runs in a container)
 
 ---
 
 ## Environment variables
 
-Copy `.env.example` to `.env` before first run (the script does this automatically, then stops so you can edit it).
-
-Key variables:
+Copy `.env.example` to `.env` before first run. **`DB_PASS` is required** — the app will not start without it.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `SECRET_KEY` | `change-me-in-production` | Flask session signing key |
-| `SQLITE_PATH` | `unify_dev.db` | SQLite file location |
-| `DB_NAME` | — | PostgreSQL database name |
-| `DB_USER` | — | PostgreSQL username |
-| `DB_PASS` | — | PostgreSQL password (also used by docker-compose) |
+| `DB_NAME` | `unify` | PostgreSQL database name |
+| `DB_USER` | `postgres` | PostgreSQL username |
+| `DB_PASS` | — | **Required.** PostgreSQL password (also used by docker-compose) |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
-| `DATABASE_URL` | — | Full Postgres URL (overrides DB_* vars) |
+| `DATABASE_URL` | — | Full Postgres URL (overrides DB_* vars if set) |
 | `ANTHROPIC_API_KEY` | — | Required for live AI chat responses |
 | `ANTHROPIC_MODEL` | `claude-3-5-haiku-20241022` | Model to use |
-
----
-
-## PostgreSQL support
-
-If you choose PostgreSQL at launch, `launch.sh` will:
-1. Install `psycopg2-binary` (requires `libpq-dev`: `sudo apt install libpq-dev`)
-2. Start a Postgres container via `docker compose up -d postgres`
-3. Wait for it to be healthy, then create the schema
-
-Make sure `DB_PASS` is set in `.env` before choosing this option.
+| `ANTHROPIC_MAX_TOKENS` | `512` | Max tokens per assistant response |
+| `LLM_SYSTEM_PROMPT` | — | Custom system prompt for the AI assistant |
 
 ---
 
@@ -108,11 +99,10 @@ Unify_V2/
 ├── tmux.sh                 # Tmux split-pane launcher (optional, requires tmux)
 ├── app.py                  # Flask API (all routes under /api/*)
 ├── create_db_tables.py     # DB schema init (called by launch.sh)
-├── requirements-core.txt   # Core Python deps (fast install, SQLite-ready)
-├── requirements-postgres.txt  # PostgreSQL driver (install only for Postgres)
+├── requirements-core.txt   # Python deps (Flask, psycopg2, Anthropic, etc.)
 ├── requirements-ml.txt     # ML/audio deps (install separately if needed)
 ├── requirements.txt        # References requirements-core.txt
-├── docker-compose.yml      # PostgreSQL (optional)
+├── docker-compose.yml      # PostgreSQL container
 ├── .env.example            # Environment variable template
 ├── lib/                    # Python modules (LLM service, etc.)
 └── frontend/               # React app (Vite + TypeScript)
