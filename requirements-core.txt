@@ -1,6 +1,8 @@
 Flask==2.3.3
 Flask-Bcrypt==1.0.1
 Werkzeug==2.3.7
-psycopg2-binary
 python-dotenv
 anthropic
+
+# PostgreSQL support (only needed if using Postgres instead of SQLite):
+#   pip install -r requirements-postgres.txt

@@ -1,5 +1,8 @@
-# Core API dependencies (fast install)
+# Core API dependencies (fast install, works with SQLite out of the box)
 -r requirements-core.txt
+
+# PostgreSQL support (only needed if using Postgres instead of SQLite):
+#   pip install -r requirements-postgres.txt
 
 # ML/audio dependencies — install separately only if needed:
 #   pip install -r requirements-ml.txt
