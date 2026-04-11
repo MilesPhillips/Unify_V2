@@ -71,7 +71,7 @@ echo "Which database backend do you want to use?"
 echo "  1) SQLite  (zero config, data stored in unify_dev.db)"
 echo "  2) PostgreSQL  (via Docker — requires Docker installed and DB_PASS in .env)"
 echo ""
-read -rp "Enter 1 or 2 [default: 1]: " DB_CHOICE
+read -rp "Enter 1 or 2 [default: 1]: " DB_CHOICE || DB_CHOICE="1"
 DB_CHOICE="${DB_CHOICE:-1}"
 
 if [[ "$DB_CHOICE" == "2" ]]; then
@@ -129,9 +129,11 @@ FLASK_PID=$!
 cleanup() {
     echo ""
     info "Shutting down ..."
-    kill "$FLASK_PID" 2>/dev/null || true
-    wait "$FLASK_PID" 2>/dev/null || true
-    info "Flask stopped."
+    if [[ -n "${FLASK_PID:-}" ]]; then
+        kill "$FLASK_PID" 2>/dev/null || true
+        wait "$FLASK_PID" 2>/dev/null || true
+        info "Flask stopped."
+    fi
 }
 trap cleanup EXIT
 trap 'trap - INT; kill -INT $$' INT
@@ -141,6 +143,7 @@ trap 'trap - TERM; kill -TERM $$' TERM
 sleep 1
 if ! kill -0 "$FLASK_PID" 2>/dev/null; then
     error "Flask failed to start. Check the output above."
+    FLASK_PID=""
     exit 1
 fi
 
