@@ -1,3 +1,0 @@
-# PostgreSQL driver — only needed when using Postgres instead of SQLite
-# Requires libpq-dev on the system: sudo apt install libpq-dev
-psycopg2-binary
