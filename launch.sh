@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# launch.sh — Start the Unify V2 development stack.
+# launch.sh — Start the Unify V2 development stack (PostgreSQL + Flask + Vite).
 #
 # Usage: ./launch.sh
 #
 # What this script does:
 #   1. Creates and activates a Python venv (if not already done)
-#   2. Installs core Python dependencies
-#   3. Copies .env.example → .env if .env does not exist
-#   4. Asks whether to use SQLite or PostgreSQL
-#   5. (PostgreSQL) starts Docker Compose and waits for Postgres to be healthy
+#   2. Installs Python dependencies (including psycopg2-binary)
+#   3. Copies .env.example → .env if .env does not exist, then exits so you can edit it
+#   4. Validates that DB_PASS is set
+#   5. Starts PostgreSQL via Docker Compose and waits for it to be healthy
 #   6. Initialises database tables
 #   7. Starts Flask on :5000 in the background
 #   8. Starts Vite on :5173 in the foreground
@@ -23,11 +23,11 @@ cd "$REPO_ROOT"
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # no colour
+NC='\033[0m'
 
-info()    { echo -e "${GREEN}[launch]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[launch]${NC} $*"; }
-error()   { echo -e "${RED}[launch]${NC} $*" >&2; }
+info()  { echo -e "${GREEN}[launch]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[launch]${NC} $*"; }
+error() { echo -e "${RED}[launch]${NC} $*" >&2; }
 
 # ─── Prerequisites ────────────────────────────────────────────────────────────
 require_cmd() {
@@ -36,6 +36,12 @@ require_cmd() {
 require_cmd python3 "Install Python 3.11+ from https://python.org"
 require_cmd node    "Install Node.js 18+ from https://nodejs.org"
 require_cmd npm     "Install Node.js 18+ from https://nodejs.org"
+require_cmd docker  "Install Docker from https://docs.docker.com/get-docker/"
+
+docker compose version &>/dev/null || {
+    error "Docker Compose v2 not found. Install Docker Desktop or the 'docker-compose-plugin' package."
+    exit 1
+}
 
 # ─── Python venv ──────────────────────────────────────────────────────────────
 VENV_DIR="$REPO_ROOT/.venv"
@@ -44,18 +50,17 @@ if [[ ! -d "$VENV_DIR" ]]; then
     python3 -m venv "$VENV_DIR"
 fi
 
-# Activate venv for the rest of this script
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
 
-info "Installing core Python dependencies ..."
+info "Installing Python dependencies ..."
 pip install -q -r "$REPO_ROOT/requirements-core.txt"
 
 # ─── .env setup ───────────────────────────────────────────────────────────────
 if [[ ! -f "$REPO_ROOT/.env" ]]; then
     warn ".env not found — copying from .env.example"
     cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-    warn "Edit .env with your credentials (SECRET_KEY, DB_PASS if using Postgres), then re-run."
+    warn "Edit .env and set DB_PASS (and optionally DB_NAME, DB_USER), then re-run."
     exit 1
 fi
 
@@ -65,49 +70,27 @@ set -a
 source "$REPO_ROOT/.env"
 set +a
 
-# ─── Database selection ───────────────────────────────────────────────────────
-echo ""
-echo "Which database backend do you want to use?"
-echo "  1) SQLite  (zero config, data stored in unify_dev.db)"
-echo "  2) PostgreSQL  (via Docker — requires Docker installed and DB_PASS in .env)"
-echo ""
-read -rp "Enter 1 or 2 [default: 1]: " DB_CHOICE || DB_CHOICE="1"
-DB_CHOICE="${DB_CHOICE:-1}"
+# ─── Validate DB_PASS ─────────────────────────────────────────────────────────
+if [[ -z "${DB_PASS:-}" ]]; then
+    error "DB_PASS is not set in .env. Please set it before running."
+    exit 1
+fi
 
-if [[ "$DB_CHOICE" == "2" ]]; then
-    require_cmd docker "Install Docker from https://docs.docker.com/get-docker/"
-    docker compose version &>/dev/null || {
-        error "Docker Compose v2 not found. Install Docker Desktop or the 'docker-compose-plugin' package."
-        exit 1
-    }
+# ─── Start PostgreSQL ─────────────────────────────────────────────────────────
+info "Starting PostgreSQL via Docker Compose ..."
+docker compose up -d postgres
 
-    if [[ -z "${DB_PASS:-}" ]]; then
-        error "DB_PASS is not set in .env. Please set it before using PostgreSQL."
+info "Waiting for PostgreSQL to be healthy ..."
+RETRIES=30
+until docker compose exec -T postgres pg_isready -U "${DB_USER:-postgres}" -d "${DB_NAME:-unify}" &>/dev/null; do
+    RETRIES=$((RETRIES - 1))
+    if [[ $RETRIES -le 0 ]]; then
+        error "PostgreSQL did not become healthy in time. Check: docker compose logs postgres"
         exit 1
     fi
-
-    info "Installing PostgreSQL driver ..."
-    pip install -q -r "$REPO_ROOT/requirements-postgres.txt"
-
-    info "Starting PostgreSQL via Docker Compose ..."
-    docker compose up -d postgres
-
-    info "Waiting for PostgreSQL to be healthy ..."
-    RETRIES=30
-    until docker compose exec -T postgres pg_isready -U "${DB_USER:-postgres}" -d "${DB_NAME:-conversations_db}" &>/dev/null; do
-        RETRIES=$((RETRIES - 1))
-        if [[ $RETRIES -le 0 ]]; then
-            error "PostgreSQL did not become healthy in time. Check: docker compose logs postgres"
-            exit 1
-        fi
-        sleep 2
-    done
-    info "PostgreSQL is ready."
-else
-    info "Using SQLite (unify_dev.db)."
-    # Unset DATABASE_URL so the app falls back to SQLite
-    unset DATABASE_URL DB_NAME DB_USER DB_PASS DB_HOST DB_PORT
-fi
+    sleep 2
+done
+info "PostgreSQL is ready."
 
 # ─── Database tables ──────────────────────────────────────────────────────────
 info "Initialising database tables ..."
